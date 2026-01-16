@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__shadcn__view_items_in_registries"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "neon-db"
+  ]
+}

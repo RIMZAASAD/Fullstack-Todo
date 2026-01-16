@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        button {
+            background: #0070f3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0051cc;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            border-color: #4caf50;
+            background: #f1f8f4;
+        }
+        .error {
+            border-color: #f44336;
+            background: #fef1f0;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Backend API Integration Test</h1>
+        
+        <div class="test-section">
+            <h2>1. Health Check</h2>
+            <button onclick="testHealth()">Test Health Endpoint</button>
+            <div id="health-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. User Registration</h2>
+            <input type="email" id="reg-email" placeholder="Email" value="test@example.com">
+            <input type="text" id="reg-name" placeholder="Name" value="Test User">
+            <input type="password" id="reg-password" placeholder="Password" value="Test123!">
+            <button onclick="testRegister()">Register User</button>
+            <div id="register-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. User Login</h2>
+            <input type="email" id="login-email" placeholder="Email" value="test@example.com">
+            <input type="password" id="login-password" placeholder="Password" value="Test123!">
+            <button onclick="testLogin()">Login</button>
+            <div id="login-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Get Tasks (Requires Login)</h2>
+            <button onclick="testGetTasks()">Get All Tasks</button>
+            <div id="tasks-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>5. Create Task (Requires Login)</h2>
+            <input type="text" id="task-title" placeholder="Task Title" value="Test Task">
+            <input type="text" id="task-desc" placeholder="Description" value="This is a test task">
+            <button onclick="testCreateTask()">Create Task</button>
+            <div id="create-task-result" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let authToken = null;
+
+        function showResult(elementId, data, isError = false) {
+            const el = document.getElementById(elementId);
+            el.style.display = 'block';
+            el.className = 'result ' + (isError ? 'error' : 'success');
+            el.textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('health-result', data);
+            } catch (error) {
+                showResult('health-result', { error: error.message }, true);
+            }
+        }
+
+        async function testRegister() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: document.getElementById('reg-email').value,
+                        name: document.getElementById('reg-name').value,
+                        password: document.getElementById('reg-password').value,
+                    }),
+                });
+                const data = await response.json();
+                showResult('register-result', data, !response.ok);
+            } catch (error) {
+                showResult('register-result', { error: error.message }, true);
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: document.getElementById('login-email').value,
+                        password: document.getElementById('login-password').value,
+                    }),
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.access_token) {
+                    authToken = data.access_token;
+                    showResult('login-result', { 
+                        ...data, 
+                        note: 'Token saved! You can now test authenticated endpoints.' 
+                    });
+                } else {
+                    showResult('login-result', data, true);
+                }
+            } catch (error) {
+                showResult('login-result', { error: error.message }, true);
+            }
+        }
+
+        async function testGetTasks() {
+            if (!authToken) {
+                showResult('tasks-result', { error: 'Please login first to get an auth token' }, true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/tasks`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                    },
+                });
+                const data = await response.json();
+                showResult('tasks-result', data, !response.ok);
+            } catch (error) {
+                showResult('tasks-result', { error: error.message }, true);
+            }
+        }
+
+        async function testCreateTask() {
+            if (!authToken) {
+                showResult('create-task-result', { error: 'Please login first to get an auth token' }, true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: document.getElementById('task-title').value,
+                        description: document.getElementById('task-desc').value,
+                        completed: false,
+                    }),
+                });
+                const data = await response.json();
+                showResult('create-task-result', data, !response.ok);
+            } catch (error) {
+                showResult('create-task-result', { error: error.message }, true);
+            }
+        }
+
+        // Test health on page load
+        window.onload = () => {
+            testHealth();
+        };
+    </script>
+</body>
+</html>

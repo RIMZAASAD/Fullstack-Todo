@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "mcp": "^1.4.2",
+    "shadcn": "^3.6.3"
+  },
+  "dependencies": {
+    "@neondatabase/mcp-server-neon": "^0.6.5",
+    "framer-motion": "^11.18.2"
+  }
+}

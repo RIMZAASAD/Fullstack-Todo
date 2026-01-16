@@ -1,0 +1,57 @@
+{
+  "allowedTools": [],
+  "mcpContextUris": [],
+  "mcpServers": {
+    "neon-db": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "d:\\Hackathone\\Fullstack-Todo\\node_modules\\@neondatabase\\mcp-server-neon\\dist\\index.js",
+        "start",
+        "napi_3vd4hvqa6n5sb08cx7q6istnp4gb4qloifnnv3y07fsdd823r2v9lcsm5cwy8efl"
+      ],
+      "env": {}
+    },
+    "shadcn": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "shadcn@latest",
+        "mcp"
+      ],
+      "env": {}
+    },
+    "vercel": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "vercel-mcp",
+        "VERCEL_API_KEY=f1PDTat9ARS2B3tZt5PiBEr6"
+      ],
+      "env": {}
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "env": {}
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@upstash/context7-mcp"
+      ],
+      "env": {
+        "CONTEXT7_API_KEY": "ctx7sk-327e8d7d-4923-4989-a9e1-9f81d9ce36ef"
+      }
+    }
+  }
+}
