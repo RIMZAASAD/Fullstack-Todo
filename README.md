@@ -55,12 +55,33 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
+# Make sure to include:
+# - OPENAI_API_KEY for AI functionality
+# - JWT_SECRET for authentication
+# - DATABASE_URL for database connection
 ```
 
 4. Start the backend server:
 ```bash
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+The API will be available at `http://localhost:8000`
+
+### AI Chatbot Setup (Included)
+
+The application includes an AI-powered chatbot for natural language task management. All required dependencies are included in requirements.txt.
+
+1. The chatbot endpoints are automatically available when you start the backend server:
+   - `POST /api/{user_id}/chat` - Chatbot interaction
+   - `POST /api/{user_id}/voice` - Voice command processing
+
+2. Make sure to configure your OpenAI API key in the .env file:
+```
+OPENAI_API_KEY=your-openai-api-key-here
+```
+
+3. The chatbot API will be available at `http://localhost:8000/api/{user_id}/chat`
 
 ### Frontend Setup
 
@@ -78,12 +99,32 @@ npm install
 ```bash
 cp .env.example .env.local
 # Edit .env.local with your configuration
+# For chatbot integration, ensure NEXT_PUBLIC_BACKEND_URL points to your backend
 ```
 
 4. Start the development server:
 ```bash
 npm run dev
 ```
+
+### Running the Application
+
+**Backend Server:**
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Frontend Server:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The application will be available at `http://localhost:3000`
+The backend API will be available at `http://localhost:8000`
 
 ## 🔐 Authentication System
 
@@ -122,6 +163,38 @@ The application features a consistent dark-themed UI with the following componen
 - **UI Elements**: Buttons, cards, dialogs, checkboxes, and tabs
 - **Statistics Cards**: Visual representation of task metrics
 - **Animated Elements**: Smooth animations throughout the interface
+
+## 🤖 AI Chatbot Integration
+
+The application includes an AI-powered chatbot for natural language task management:
+
+- **Natural Language Processing**: Add, list, update, complete, and delete tasks using natural language
+- **Multilingual Support**: Supports both English and Urdu commands
+- **Voice Commands**: Speak your tasks instead of typing them
+- **Conversation Context**: Maintains context during conversations for more natural interactions
+- **Secure Integration**: Fully integrated with the existing authentication system
+
+### Using the Chatbot
+
+#### Text Commands
+- "Add task: Buy groceries" - Add a new task
+- "Show me my tasks" - List all your tasks
+- "Complete task 1" - Mark a task as completed
+- "Update task 1 to: Buy organic groceries" - Update a task description
+- "Delete task 2" - Remove a task
+
+#### Voice Commands
+- Click the microphone button and speak your command
+- Works with all text commands mentioned above
+- Supports both English and Urdu voice input
+
+### API Endpoints
+
+#### Chatbot
+- `POST /api/{user_id}/chat` - Interact with the AI chatbot
+- `POST /api/{user_id}/voice` - Submit voice commands
+- `GET /api/{user_id}/health` - Check chat API health
+- `GET /api/{user_id}/voice/health` - Check voice API health
 
 ## 🔧 Environment Variables
 
