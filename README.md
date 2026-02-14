@@ -2,6 +2,10 @@
 
 A modern fullstack todo application featuring JWT-based authentication and a beautiful dark-themed UI built with Next.js and Shadcn/UI components.
 
+## 🌐 Live Deployment
+
+**Frontend Deployed at**: [https://frontend-bvv0qpq5x-rimzaasads-projects.vercel.app](https://frontend-bvv0qpq5x-rimzaasads-projects.vercel.app)
+
 ## 🚀 Features
 
 - **JWT Authentication**: Secure user registration, login, and session management
