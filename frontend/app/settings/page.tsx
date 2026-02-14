@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import RealTimeImageUploader from '@/components/ui/real-time-image-uploader';
 import { motion } from 'framer-motion';
 import {
   User,
@@ -22,20 +24,24 @@ import {
   Activity,
   Settings as SettingsIcon,
   Upload,
-  ListTodo
+  ListTodo,
+  Loader2
 } from 'lucide-react';
 import AppLayout from '@/components/layout/app-layout';
 import { BounceIn, StaggeredList, StaggeredItem, FadeIn } from '@/components/reactbits-animated';
+import { toast } from 'sonner';
+import { getUserSettings, updateUserSettings } from '@/lib/api/user-settings';
+import { changePassword } from '@/lib/api/change-password';
 
 // Auth Service Helper - To be moved to separate file later
 const authHelper = {
   updateProfile: async (data: any) => {
     // This should be in auth-service.ts but adding here for quick fix
-    const response = await fetch('/api/auth/me', {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/auth/me`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
       },
       body: JSON.stringify(data)
     });
@@ -50,29 +56,291 @@ const authHelper = {
 };
 
 const SettingsPage: React.FC = () => {
-  const { state } = useAuth();
+  const { state, checkAuthStatus } = useAuth();
   const [userData, setUserData] = useState({
     name: state.user?.name || '',
-    email: state.user?.email || '',
-    username: state.user?.username || ''
+    email: state.user?.email || ''
+  });
+  const [notificationSettings, setNotificationSettings] = useState({
+    email_notifications: true,
+    task_reminders: true,
+    weekly_reports: true,
+    alerts_enabled: true
   });
   const [activeTab, setActiveTab] = useState('profile');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
     setUserData({
       name: state.user?.name || '',
-      email: state.user?.email || '',
-      username: state.user?.username || ''
+      email: state.user?.email || ''
     });
+    
+    // Load notification settings
+    loadNotificationSettings();
   }, [state.user]);
+
+  const loadNotificationSettings = async () => {
+    try {
+      const settings = await getUserSettings();
+      if (settings) {
+        setNotificationSettings({
+          email_notifications: settings.email_notifications ?? true,
+          task_reminders: settings.task_reminders ?? true,
+          weekly_reports: settings.weekly_reports ?? true,
+          alerts_enabled: settings.alerts_enabled ?? true
+        });
+      }
+    } catch (error) {
+      console.error('Error loading notification settings:', error);
+      // Use default values if there's an error
+      setNotificationSettings({
+        email_notifications: true,
+        task_reminders: true,
+        weekly_reports: true,
+        alerts_enabled: true
+      });
+    }
+  };
+
+  useEffect(() => {
+    // Load notification settings when component mounts to ensure they're available
+    loadNotificationSettings();
+  }, []);
+
+  const handleAvatarUpload = async (file: File) => {
+    // Validate file type
+    if (!file.type.match('image/jpeg|image/png|image/jpg|image/webp')) {
+      toast.error("Invalid file type. Please upload a valid image (JPG, PNG, WEBP)");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size exceeds 5MB limit");
+      return;
+    }
+
+    setIsSaving(true);
+    setSavingField('avatar');
+    
+    try {
+      // Preview the image
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+
+      // Prepare form data for upload
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Upload to backend
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'}/api/auth/upload-avatar`, {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header - let browser set it with boundary
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || response.statusText || 'Failed to upload avatar');
+      }
+
+      const result = await response.json();
+      
+      // Update user context with new avatar
+      if (state.user) {
+        const updatedUser = {
+          ...state.user,
+          avatar_url: result.avatar_url
+        };
+        // Update context with new user data
+        // In a real implementation, this would use context dispatch
+      }
+
+      toast.success("Avatar updated successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload avatar");
+      setAvatarPreview(null);
+    } finally {
+      setIsSaving(false);
+      setSavingField(null);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/auth/remove-avatar`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to remove avatar');
+      }
+
+      // Refresh user data to get the updated avatar
+      await checkAuthStatus();
+
+      setAvatarPreview(null);
+      toast("Success!", {
+        description: "Avatar removed successfully!"
+      });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove avatar", {
+        description: "Avatar removal failed"
+      });
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setUserData(prev => ({ ...prev, [name]: value }));
   };
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSavingField('profile');
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'}/api/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          name: userData.name,
+          email: userData.email
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Failed to update profile');
+      }
+
+      const updatedUser = await response.json();
+      
+      // Update user context
+      // In a real implementation, this would use context dispatch
+      
+      toast.success("Profile updated successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update profile");
+    } finally {
+      setIsSaving(false);
+      setSavingField(null);
+    }
+  };
+
+  const handleNotificationChange = async (key: keyof typeof notificationSettings, value: boolean) => {
+    try {
+      setIsSaving(true);
+      setSavingField('notifications');
+
+      // Update local state immediately for responsiveness
+      const updatedSettings = { ...notificationSettings, [key]: value };
+      setNotificationSettings(updatedSettings);
+
+      // Save to backend
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'}/api/user-settings/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          email_notifications: updatedSettings.email_notifications,
+          task_reminders: updatedSettings.task_reminders,
+          weekly_reports: updatedSettings.weekly_reports,
+          alerts_enabled: updatedSettings.alerts_enabled
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Failed to update notification settings');
+      }
+
+      const result = await response.json();
+      toast.success("Notification settings updated successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update notification settings");
+      // Revert to previous state if update failed
+      setNotificationSettings(prev => ({ ...prev, [key]: !value }));
+    } finally {
+      setIsSaving(false);
+      setSavingField(null);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmNewPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8 || 
+        !/[A-Z]/.test(newPassword) || 
+        !/[a-z]/.test(newPassword) || 
+        !/[0-9]/.test(newPassword) || 
+        !/[!@#$%^&*(),.?":{}|<>]/.test(newPassword)) {
+      toast.error("Password must be at least 8 characters long and include uppercase, lowercase, number, and special character");
+      return;
+    }
+
+    setIsSaving(true);
+    setSavingField('password');
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'}/api/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Failed to change password');
+      }
+
+      const result = await response.json();
+      toast.success("Password changed successfully!");
+      
+      // Close modal and reset form
+      setShowPasswordModal(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err: any) {
+      toast.error(err.message || "Failed to change password");
+    } finally {
+      setIsSaving(false);
+      setSavingField(null);
+    }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +352,8 @@ const SettingsPage: React.FC = () => {
       // For now we use the direct fetch helper
       const updatedUser = await authHelper.updateProfile({
         name: userData.name,
-        email: userData.email
+        email: userData.email,
+        avatar_url: state.user?.avatar_url || null
         // Username is not updatable in backend yet
       });
 
@@ -134,7 +403,7 @@ const SettingsPage: React.FC = () => {
     }>
       <AppLayout>
         <BounceIn>
-          <div className="space-y-8 max-w-4xl">
+          <div className="space-y-8 max-w-4xl w-full">
             {/* Header */}
             <header>
               <FadeIn>
@@ -156,9 +425,9 @@ const SettingsPage: React.FC = () => {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 md:space-y-8">
               <div className="relative">
                 <div className="absolute inset-0 bg-indigo-500/5 blur-xl -z-10" />
-                <TabsList className="flex md:grid w-full md:grid-cols-4 bg-white/5 p-1.5 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar scrollbar-hide">
-                  <TabsTrigger value="profile" className="flex-1 min-w-[100px] md:min-w-0 rounded-xl data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-400 text-xs md:text-sm py-2.5">
-                    <User size={16} className="mr-2 hidden sm:inline" />
+                <TabsList className="flex flex-wrap md:grid w-full md:grid-cols-4 bg-white/5 p-1.5 rounded-2xl border border-white/5 gap-2 max-h-none h-auto">
+                  <TabsTrigger value="profile" className="flex-1 min-w-[120px] md:min-w-0 rounded-xl data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-400 text-xs md:text-sm py-2.5">
+                    <User size={16} className="mr-2 inline" />
                     Profile
                   </TabsTrigger>
                   <TabsTrigger value="account" className="flex-1 min-w-[100px] md:min-w-0 rounded-xl data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-400 text-xs md:text-sm py-2.5">
@@ -186,51 +455,26 @@ const SettingsPage: React.FC = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6 p-6 sm:p-8">
-                    <div className="flex flex-col sm:flex-row items-center gap-6 pb-6 border-b border-white/5">
-                      <div className="relative group">
-                        <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-white/5 relative z-10">
-                          <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${state.user?.name || 'User'}`} alt={state.user?.name} />
-                          <AvatarFallback className="bg-slate-900 text-indigo-400 font-black text-2xl">
-                            {state.user?.name?.charAt(0).toUpperCase() || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      <div className="flex flex-col sm:flex-row items-center gap-3">
-                        <Button variant="outline" className="w-full sm:w-auto border-white/10 hover:bg-white/5 text-slate-300 rounded-xl h-11 px-5">
-                          <Upload size={16} className="mr-2" />
-                          Change Photo
-                        </Button>
-                        <Button variant="ghost" className="w-full sm:w-auto text-slate-500 hover:text-slate-300 rounded-xl h-11 px-5">
-                          Remove
-                        </Button>
-                      </div>
+                    <div className="pb-6 border-b border-white/5">
+                      <RealTimeImageUploader
+                        onImageChange={handleAvatarUpload}
+                        currentImageUrl={avatarPreview || (state.user?.avatar_url ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${state.user.avatar_url}` : undefined)}
+                        maxSize={5}
+                        className="w-full max-w-md mx-auto"
+                      />
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="name" className="text-slate-400">Full Name</Label>
-                          <Input
-                            id="name"
-                            name="name"
-                            value={userData.name}
-                            onChange={handleInputChange}
-                            className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
-                            placeholder="Enter your full name"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="username" className="text-slate-400">Username</Label>
-                          <Input
-                            id="username"
-                            name="username"
-                            value={userData.username}
-                            onChange={handleInputChange}
-                            className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
-                            placeholder="Enter your username"
-                          />
-                        </div>
+                    <form onSubmit={handleProfileUpdate} className="space-y-4">
+                      <div>
+                        <Label htmlFor="name" className="text-slate-400">Full Name</Label>
+                        <Input
+                          id="name"
+                          name="name"
+                          value={userData.name}
+                          onChange={(e) => setUserData({...userData, name: e.target.value})}
+                          className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
+                          placeholder="Enter your full name"
+                        />
                       </div>
                       <div>
                         <Label htmlFor="email" className="text-slate-400">Email Address</Label>
@@ -239,15 +483,28 @@ const SettingsPage: React.FC = () => {
                           name="email"
                           type="email"
                           value={userData.email}
-                          onChange={handleInputChange}
+                          onChange={(e) => setUserData({...userData, email: e.target.value})}
                           className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
                           placeholder="Enter your email"
                         />
                       </div>
                       <div className="pt-4">
-                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-500 rounded-xl px-6 h-12 flex items-center gap-2">
-                          <Save size={18} />
-                          Save Changes
+                        <Button 
+                          type="submit" 
+                          className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 rounded-xl px-6 h-12 flex items-center gap-2"
+                          disabled={isSaving && savingField === 'profile'}
+                        >
+                          {isSaving && savingField === 'profile' ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save size={18} />
+                              Save Changes
+                            </>
+                          )}
                         </Button>
                       </div>
                     </form>
@@ -309,8 +566,20 @@ const SettingsPage: React.FC = () => {
                     <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                       <h3 className="font-bold text-white mb-2">Password</h3>
                       <p className="text-slate-400 text-sm mb-4">Last changed 3 months ago</p>
-                      <Button variant="outline" className="border-white/10 hover:bg-white/5 text-slate-300 rounded-xl">
-                        Change Password
+                      <Button
+                        variant="outline"
+                        className="border-white/10 hover:bg-white/5 text-slate-300 rounded-xl"
+                        onClick={() => setShowPasswordModal(true)}
+                        disabled={isSaving && savingField === 'password'}
+                      >
+                        {isSaving && savingField === 'password' ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Changing...
+                          </>
+                        ) : (
+                          "Change Password"
+                        )}
                       </Button>
                     </div>
 
@@ -343,34 +612,48 @@ const SettingsPage: React.FC = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white/5 rounded-xl border border-white/5">
+                      <div className="min-w-0">
                         <h3 className="font-bold text-white">Email Notifications</h3>
                         <p className="text-slate-400 text-sm">Receive notifications via email</p>
                       </div>
-                      <Button variant="outline" className="border-white/10 hover:bg-white/5 text-slate-300 rounded-xl">
-                        Manage
-                      </Button>
+                      <Switch
+                        checked={notificationSettings.email_notifications}
+                        onCheckedChange={(checked) => handleNotificationChange('email_notifications', checked)}
+                      />
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white/5 rounded-xl border border-white/5">
+                      <div className="min-w-0">
                         <h3 className="font-bold text-white">Task Reminders</h3>
                         <p className="text-slate-400 text-sm">Get reminded about upcoming tasks</p>
                       </div>
-                      <Button variant="outline" className="border-white/10 hover:bg-white/5 text-slate-300 rounded-xl">
-                        Manage
-                      </Button>
+                      <Switch
+                        checked={notificationSettings.task_reminders}
+                        onCheckedChange={(checked) => handleNotificationChange('task_reminders', checked)}
+                      />
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white/5 rounded-xl border border-white/5">
+                      <div className="min-w-0">
                         <h3 className="font-bold text-white">Weekly Reports</h3>
                         <p className="text-slate-400 text-sm">Receive weekly productivity reports</p>
                       </div>
-                      <Button variant="outline" className="border-white/10 hover:bg-white/5 text-slate-300 rounded-xl">
-                        Manage
-                      </Button>
+                      <Switch
+                        checked={notificationSettings.weekly_reports}
+                        onCheckedChange={(checked) => handleNotificationChange('weekly_reports', checked)}
+                      />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white/5 rounded-xl border border-white/5">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-white">System Alerts</h3>
+                        <p className="text-slate-400 text-sm">Enable system alerts and notifications</p>
+                      </div>
+                      <Switch
+                        checked={notificationSettings.alerts_enabled}
+                        onCheckedChange={(checked) => handleNotificationChange('alerts_enabled', checked)}
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -379,6 +662,123 @@ const SettingsPage: React.FC = () => {
           </div>
         </BounceIn>
       </AppLayout>
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-white">Change Password</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmNewPassword('');
+                }}
+                className="text-slate-400 hover:text-white hover:bg-white/5"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="current-password" className="text-slate-400">Current Password</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
+                  placeholder="Enter current password"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="new-password" className="text-slate-400">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
+                  placeholder="Enter new password"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="confirm-new-password" className="text-slate-400">Confirm New Password</Label>
+                <Input
+                  id="confirm-new-password"
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  className="bg-white/5 border-white/5 text-white rounded-xl mt-1"
+                  placeholder="Confirm new password"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                className="flex-1 border-white/10 hover:bg-white/5 text-slate-300 rounded-xl"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmNewPassword('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 rounded-xl"
+                onClick={async () => {
+                  // Validate password strength
+                  if (newPassword.length < 8 || 
+                      !/[A-Z]/.test(newPassword) || 
+                      !/[a-z]/.test(newPassword) || 
+                      !/[0-9]/.test(newPassword) || 
+                      !/[!@#$%^&*(),.?":{}|<>]/.test(newPassword)) {
+                    toast.error("New password must be at least 8 characters long and include uppercase, lowercase, number, and special character");
+                    return;
+                  }
+                  
+                  // Validate that new passwords match
+                  if (newPassword !== confirmNewPassword) {
+                    toast.error("New passwords do not match");
+                    return;
+                  }
+                  
+                  try {
+                    await changePassword({ current_password: currentPassword, new_password: newPassword });
+                    toast.success("Password changed successfully!");
+                    
+                    // Close modal and reset form
+                    setShowPasswordModal(false);
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmNewPassword('');
+                  } catch (error: any) {
+                    toast.error(error.message || "Failed to change password");
+                  }
+                }}
+                disabled={!currentPassword || !newPassword || !confirmNewPassword}
+              >
+                Update Password
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </ProtectedRoute>
   );
 };
